@@ -1,21 +1,18 @@
 # This code uses ParquetWriter from the pyarrow.parquet module for writing data to Parquet files. Ensure you have the pyarrow library installed (pip install pyarrow). This should resolve the import issue you encountered.
-
-
-
 import os
 import subprocess
-import shutil
-from pyarrow.parquet import ParquetFile, ParquetWriter
 from pyarrow import schema
+from pyarrow.parquet import ParquetWriter
 
 def read_log_file(file_path):
     with open(file_path, 'r') as file:
         return file.readlines()
 
 def write_to_parquet_file(file_path, data):
-    with ParquetWriter(file_path, schema(['line'], ['string'])) as writer:
+    schema = schema([('line', 'string')])
+    with ParquetWriter(file_path, schema) as writer:
         for line in data:
-            writer.write_table([line])
+            writer.write_table([{'line': line.strip()}])
 
 def main():
     # Get username using whoami command
