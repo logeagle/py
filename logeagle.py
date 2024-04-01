@@ -1,21 +1,21 @@
-# This Python code performs the same operations as the Rust code. It reads the log files, creates the output directory if it doesn't exist, and writes the data to Parquet files. The username is obtained using the whoami command via subprocess. Ensure you have the parquet library installed (pip install parquet).
+# This code uses ParquetWriter from the pyarrow.parquet module for writing data to Parquet files. Ensure you have the pyarrow library installed (pip install pyarrow). This should resolve the import issue you encountered.
+
 
 
 import os
 import subprocess
 import shutil
-from parquet import ParquetFile, schema
-from parquet import write_simple
-from datetime import datetime
+from pyarrow.parquet import ParquetFile, ParquetWriter
+from pyarrow import schema
 
 def read_log_file(file_path):
     with open(file_path, 'r') as file:
         return file.readlines()
 
 def write_to_parquet_file(file_path, data):
-    with ParquetFile(file_path, 'w') as pf:
-        pf.schema = schema([("line", "UTF8")])
-        write_simple(pf, data)
+    with ParquetWriter(file_path, schema(['line'], ['string'])) as writer:
+        for line in data:
+            writer.write_table([line])
 
 def main():
     # Get username using whoami command
