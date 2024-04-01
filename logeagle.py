@@ -1,5 +1,6 @@
 # This code uses ParquetWriter from the pyarrow.parquet module for writing data to Parquet files. Ensure you have the pyarrow library installed (pip install pyarrow). This should resolve the import issue you encountered.
 
+
 import os
 import subprocess
 import pyarrow as pa
@@ -11,8 +12,19 @@ def read_log_file(file_path):
         return file.readlines()
 
 def write_to_parquet_file(file_path, data):
+    # Remove null values from the data
+    data = [line.strip() for line in data if line.strip()]
+
+    # Create PyArrow schema
     schema = arrow_schema([('line', 'string')])
-    table = pa.Table.from_pydict({'line': data})
+
+    # Create PyArrow array
+    arr = pa.array(data, pa.string())
+
+    # Create PyArrow table
+    table = pa.Table.from_arrays([arr], schema=schema)
+
+    # Write table to Parquet file
     with ParquetWriter(file_path, schema) as writer:
         writer.write_table(table)
 
