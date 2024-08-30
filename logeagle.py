@@ -40,7 +40,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class LogFileHandler(FileSystemEventHandler):
-    def __init__(self, log_file: str, output_file: str, rotation_interval: int):
+    def __init__(self, log_file: str, output_file: str, rotation_interval: int, log_type: str):
         self.log_file = log_file
         self.output_file = output_file
         self.last_position = 0
@@ -48,6 +48,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.writer = None
         self.rotation_interval = rotation_interval
         self.last_rotation_time = time.time()
+        self.log_type = log_type
 
     def on_modified(self, event):
         if event.src_path == self.log_file:
@@ -75,11 +76,18 @@ class LogFileHandler(FileSystemEventHandler):
 
     def generate_sample_logs(self):
         current_time = int(time.time())
-        sample_logs = [
-            f"{current_time} - Sample log entry 1",
-            f"{current_time} - Sample log entry 2",
-            f"{current_time} - Sample log entry 3"
-        ]
+        if self.log_type == 'access':
+            sample_logs = [
+                f'{current_time} - 192.168.1.{random.randint(1, 255)} - - [30/Aug/2024:{random.randint(0, 23):02d}:{random.randint(0, 59):02d}:{random.randint(0, 59):02d} +0000] "GET /page{random.randint(1, 10)}.html HTTP/1.1" 200 {random.randint(1000, 5000)}',
+                f'{current_time} - 10.0.0.{random.randint(1, 255)} - - [30/Aug/2024:{random.randint(0, 23):02d}:{random.randint(0, 59):02d}:{random.randint(0, 59):02d} +0000] "POST /api/data HTTP/1.1" 201 {random.randint(100, 1000)}',
+                f'{current_time} - 172.16.0.{random.randint(1, 255)} - - [30/Aug/2024:{random.randint(0, 23):02d}:{random.randint(0, 59):02d}:{random.randint(0, 59):02d} +0000] "GET /images/logo.png HTTP/1.1" 304 0'
+            ]
+        else:  # error logs
+            sample_logs = [
+                f'{current_time} - {random.choice(["error", "crit", "alert"])} - Error processing request: {random.choice(["File not found", "Database connection failed", "Invalid input"])}',
+                f'{current_time} - warn - Warning: {random.choice(["High CPU usage", "Low disk space", "Slow database query"])}',
+                f'{current_time} - notice - Notice: {random.choice(["Cache cleared", "Scheduled maintenance starting", "Config file updated"])}'
+            ]
         for log in sample_logs:
             self.write_to_parquet(log)
 
@@ -123,14 +131,16 @@ def main(debug: bool = False):
     access_handler = LogFileHandler(
         config.access_log, 
         os.path.join(config.output_dir, "access"),
-        config.rotation_interval
+        config.rotation_interval,
+        'access'
     )
     observer.schedule(access_handler, path=os.path.dirname(config.access_log), recursive=False)
 
     error_handler = LogFileHandler(
         config.error_log, 
         os.path.join(config.output_dir, "error"),
-        config.rotation_interval
+        config.rotation_interval,
+        'error'
     )
     observer.schedule(error_handler, path=os.path.dirname(config.error_log), recursive=False)
 
