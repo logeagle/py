@@ -30,7 +30,7 @@ os.makedirs(config.output_dir, exist_ok=True)
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG for more detailed logging
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(os.path.join(config.output_dir, "log_processor.log")),
@@ -49,6 +49,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.rotation_interval = rotation_interval
         self.last_rotation_time = time.time()
         self.log_type = log_type
+        self.buffer = []  # Add a buffer to collect rows
 
     def on_modified(self, event):
         if event.src_path == self.log_file:
@@ -97,20 +98,23 @@ class LogFileHandler(FileSystemEventHandler):
 
         try:
             current_time = int(time.time())
+            self.buffer.append((current_time, line))
 
-            if self.writer is None or self._should_rotate():
-                if self.writer:
-                    self.writer.close()
-                self._rotate_file()
+            if len(self.buffer) >= 100 or self._should_rotate():  # Write in batches of 100 or when rotating
+                if self.writer is None or self._should_rotate():
+                    if self.writer:
+                        self.writer.close()
+                    self._rotate_file()
 
-            table = pa.Table.from_arrays(
-                [pa.array([current_time], type=pa.timestamp('s')),
-                 pa.array([line], type=pa.string())],
-                schema=self.schema
-            )
+                table = pa.Table.from_arrays(
+                    [pa.array([row[0] for row in self.buffer], type=pa.timestamp('s')),
+                     pa.array([row[1] for row in self.buffer], type=pa.string())],
+                    schema=self.schema
+                )
 
-            self.writer.write_table(table)
-            logger.info(f"Wrote new line to {self.output_file}")
+                self.writer.write_table(table)
+                logger.info(f"Wrote {len(self.buffer)} rows to {self.output_file}")
+                self.buffer.clear()  # Clear the buffer after writing
         except Exception as e:
             logger.error(f"Error writing to Parquet file {self.output_file}: {str(e)}")
 

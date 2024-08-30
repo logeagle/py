@@ -1,2 +1,8 @@
 pyarrow
+pandas
 watchdog
+numpy
+python-dateutil
+pytz
+six
+tzdata
