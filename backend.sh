@@ -4,7 +4,7 @@
 
 # Set variables
 VENV_NAME="backend_venv"
-SCRIPT_NAME="log_processor.py"
+SCRIPT_NAME="logeagle.py"
 
 # Create virtual environment if it doesn't exist
 if [ ! -d "$VENV_NAME" ]; then

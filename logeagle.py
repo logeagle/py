@@ -28,22 +28,19 @@ class Config:
     access_log: str = f"/var/log/nginx/access.log"
     error_log: str = f"/var/log/nginx/error.log"
     output_dir: str = f"/home/{username}/logeagle"
-    chunk_size: int = 1000
     rotation_interval: int = 3600  # 1 hour
 
 config = Config()
 
 class LogFileHandler(FileSystemEventHandler):
-    def __init__(self, log_file: str, output_file: str, chunk_size: int, rotation_interval: int):
+    def __init__(self, log_file: str, output_file: str, rotation_interval: int):
         self.log_file = log_file
         self.output_file = output_file
         self.last_position = 0
         self.schema = arrow_schema([('timestamp', pa.timestamp('s')), ('line', pa.string())])
         self.writer = None
-        self.chunk_size = chunk_size
         self.rotation_interval = rotation_interval
         self.last_rotation_time = time.time()
-        self.buffer = []
 
     def on_modified(self, event):
         if event.src_path == self.log_file:
@@ -53,37 +50,32 @@ class LogFileHandler(FileSystemEventHandler):
         try:
             with open(self.log_file, 'r') as file:
                 file.seek(self.last_position)
-                new_lines = file.readlines()
+                for line in file:
+                    self.write_to_parquet(line.strip())
                 self.last_position = file.tell()
-            if new_lines:
-                self.buffer.extend(new_lines)
-                if len(self.buffer) >= self.chunk_size or self._should_rotate():
-                    self.write_to_parquet()
         except Exception as e:
             logger.error(f"Error processing file {self.log_file}: {str(e)}")
 
-    def write_to_parquet(self):
-        if not self.buffer:
+    def write_to_parquet(self, line: str):
+        if not line:
             return
 
         try:
             current_time = int(time.time())
-            cleaned_data = [(current_time, line.strip()) for line in self.buffer if line.strip()]
-
-            table = pa.Table.from_arrays(
-                [pa.array([t[0] for t in cleaned_data], type=pa.timestamp('s')),
-                 pa.array([t[1] for t in cleaned_data], type=pa.string())],
-                schema=self.schema
-            )
 
             if self.writer is None or self._should_rotate():
                 if self.writer:
                     self.writer.close()
                 self._rotate_file()
 
+            table = pa.Table.from_arrays(
+                [pa.array([current_time], type=pa.timestamp('s')),
+                 pa.array([line], type=pa.string())],
+                schema=self.schema
+            )
+
             self.writer.write_table(table)
-            logger.info(f"Wrote {len(cleaned_data)} new lines to {self.output_file}")
-            self.buffer.clear()
+            logger.info(f"Wrote new line to {self.output_file}")
         except Exception as e:
             logger.error(f"Error writing to Parquet file {self.output_file}: {str(e)}")
 
@@ -106,7 +98,6 @@ def main(debug: bool = False):
     access_handler = LogFileHandler(
         config.access_log, 
         os.path.join(config.output_dir, "access.parquet"),
-        config.chunk_size,
         config.rotation_interval
     )
     observer.schedule(access_handler, path=os.path.dirname(config.access_log), recursive=False)
@@ -114,13 +105,12 @@ def main(debug: bool = False):
     error_handler = LogFileHandler(
         config.error_log, 
         os.path.join(config.output_dir, "error.parquet"),
-        config.chunk_size,
         config.rotation_interval
     )
     observer.schedule(error_handler, path=os.path.dirname(config.error_log), recursive=False)
 
     observer.start()
-    logger.info("Started monitoring log files.")
+    logger.info("Started monitoring log files in real-time.")
 
     try:
         while True:
