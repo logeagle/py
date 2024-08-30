@@ -1,5 +1,2 @@
-# Real-time Log Processor requirements
-pandas
 pyarrow
 watchdog
-PyYAML
