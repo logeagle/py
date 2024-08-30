@@ -8,30 +8,30 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import time
 import argparse
-import yaml
-from typing import Dict, Any
 from dataclasses import dataclass
+from typing import Dict, Any
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("log_processor.log"),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 @dataclass
 class Config:
-    access_log: str
-    error_log: str
-    output_dir: str
-    chunk_size: int
-    rotation_interval: int
+    username: str = pwd.getpwuid(os.getuid())[0]
+    access_log: str = f"/var/log/nginx/access.log"
+    error_log: str = f"/var/log/nginx/error.log"
+    output_dir: str = f"/home/{username}/logeagle"
+    chunk_size: int = 1000
+    rotation_interval: int = 3600  # 1 hour
 
-def load_config(config_path: str) -> Config:
-    try:
-        with open(config_path, 'r') as f:
-            config_data = yaml.safe_load(f)
-        return Config(**config_data)
-    except Exception as e:
-        logger.error(f"Error loading configuration: {str(e)}")
-        raise
+config = Config()
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, log_file: str, output_file: str, chunk_size: int, rotation_interval: int):
@@ -69,7 +69,7 @@ class LogFileHandler(FileSystemEventHandler):
         try:
             current_time = int(time.time())
             cleaned_data = [(current_time, line.strip()) for line in self.buffer if line.strip()]
-            
+
             table = pa.Table.from_arrays(
                 [pa.array([t[0] for t in cleaned_data], type=pa.timestamp('s')),
                  pa.array([t[1] for t in cleaned_data], type=pa.string())],
@@ -97,14 +97,12 @@ class LogFileHandler(FileSystemEventHandler):
         self.last_rotation_time = time.time()
         logger.info(f"Rotated to new file: {new_output_file}")
 
-def get_username() -> str:
-    return pwd.getpwuid(os.getuid())[0]
-
-def main(config: Config):
+def main(debug: bool = False):
+    """Main function to run the log processor."""
     os.makedirs(config.output_dir, exist_ok=True)
-    
+
     observer = Observer()
-    
+
     access_handler = LogFileHandler(
         config.access_log, 
         os.path.join(config.output_dir, "access.parquet"),
@@ -112,7 +110,7 @@ def main(config: Config):
         config.rotation_interval
     )
     observer.schedule(access_handler, path=os.path.dirname(config.access_log), recursive=False)
-    
+
     error_handler = LogFileHandler(
         config.error_log, 
         os.path.join(config.output_dir, "error.parquet"),
@@ -120,10 +118,10 @@ def main(config: Config):
         config.rotation_interval
     )
     observer.schedule(error_handler, path=os.path.dirname(config.error_log), recursive=False)
-    
+
     observer.start()
     logger.info("Started monitoring log files.")
-    
+
     try:
         while True:
             time.sleep(1)
@@ -136,13 +134,11 @@ def main(config: Config):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Real-time log processor")
-    parser.add_argument("--config", default="config.yaml", help="Path to configuration file")
-    
+    parser.add_argument('--debug', action='store_true', help='Run in debug mode')
     args = parser.parse_args()
-    
+
     try:
-        config = load_config(args.config)
-        main(config)
+        main(debug=args.debug)
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")
         exit(1)

@@ -1,5 +1,0 @@
-access_log: "/var/log/nginx/access.log"
-error_log: "/var/log/nginx/error.log"
-output_dir: "/home/username/logeagle"
-chunk_size: 1000
-rotation_interval: 3600
